@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">tfliteDemo</string>
+    <drawable name="color_normal">#4b2e83</drawable>
+    <drawable name="color_pressed">#562ba9</drawable>
+</resources>
