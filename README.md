@@ -59,3 +59,5 @@ This is a template to test the reference speed of tflite model on android.
   ```
 
 
+
+https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/#0

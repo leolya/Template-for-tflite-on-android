@@ -21,7 +21,7 @@
             android:id="@+id/textView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="reference time: "
+            android:text="inference time: "
             android:textColor="#ffffff"
             android:textSize="20dp" />
 
