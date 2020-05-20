@@ -25,6 +25,14 @@
             android:textColor="#ffffff"
             android:textSize="20dp" />
 
+        <TextView
+            android:id="@+id/textView_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Prediction: "
+            android:textColor="#ffffff"
+            android:textSize="20dp" />
+
 
         <ImageView
             android:id="@+id/imageView"

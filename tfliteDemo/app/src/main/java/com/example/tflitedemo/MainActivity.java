@@ -4,6 +4,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import android.content.Intent;
 import android.content.res.AssetFileDescriptor;
+import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.AsyncTask;
@@ -21,8 +22,12 @@ import org.tensorflow.lite.Interpreter;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Vector;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -32,15 +37,20 @@ public class MainActivity extends AppCompatActivity {
 
     private ImageView imageV;
     private TextView textV;
+    private TextView textV_C;
     private Bitmap bitmap;
     private Interpreter tflite;
-    private  long referenceTime = 0;
+    private  long inferenceTime = 0;
+    private Vector<String> labels = new Vector<String>();
+    private AssetManager assetManager;
+    private String prediction;
 
     Handler mHandler = new Handler(){
         public void handleMessage(Message msg) {
             super.handleMessage(msg);
-            if(msg.arg1 == 1 && referenceTime != 0) {
-                textV.setText("reference time: " + referenceTime);
+            if(msg.arg1 == 1 && inferenceTime != 0) {
+                textV.setText("inference time: " + inferenceTime);
+                textV_C.setText("Prediction: " + prediction);
             }
         }
     };
@@ -52,6 +62,7 @@ public class MainActivity extends AppCompatActivity {
 
         imageV = (ImageView) findViewById(R.id.imageView);
         textV = (TextView) findViewById(R.id.textView);
+        textV_C = (TextView) findViewById(R.id.textView_label);
 
         new ModelLoadAsyncTask().execute();
 
@@ -70,6 +81,8 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+
+        assetManager = getAssets();  // used to load label from assets folder
     }
 
     private class ModelLoadAsyncTask extends AsyncTask<Void, Void, Integer> {
@@ -80,6 +93,15 @@ public class MainActivity extends AppCompatActivity {
             } catch (IOException e) {
                 return 0;
             }
+
+            //load labels
+            try {
+                String labelsContent = new String(getBytesFromFile(assetManager, "imagenet_labels.list"));
+                labels.addAll(Arrays.asList(labelsContent.split("\r")));
+            } catch (IOException e) {
+                return 0;//failure
+            }
+
             return 1;
         }
         protected void onPostExecute(Integer status) {
@@ -99,12 +121,24 @@ public class MainActivity extends AppCompatActivity {
             int height = 224;
             int width = 224;
             float[][]out = new float[1][1000];
-            float[][][][] in = getScaledMatrix(height, width, bitmap);
-            long startTimeForReference = SystemClock.uptimeMillis();
+            float[][] norm = {{123.f,117.f,104.f},{58.395f,57.12f,57.375f}};
+            float[][][][] in = getScaledMatrix(height, width, bitmap, norm);
+            long startTimeForInference = SystemClock.uptimeMillis();
             tflite.run(in, out);
-            long endTimeForReference = SystemClock.uptimeMillis();
-            referenceTime = endTimeForReference - startTimeForReference;
-            Log.i(TAG, "Reference Time: " + referenceTime);
+            long endTimeForInference = SystemClock.uptimeMillis();
+            inferenceTime = endTimeForInference - startTimeForInference;
+            Log.i(TAG, "inference Time: " + inferenceTime);
+
+
+            int maxPosition = -1;
+            float maxValue = 0;
+            for (int j = 0; j < out[0].length; ++j) {
+                if (out[0][j] > maxValue) {
+                    maxValue = out[0][j];
+                    maxPosition = j;
+                }
+            }
+            prediction = labels.get(maxPosition);
 
 //            outputBitmap = getBitmap(height, width, out);
             Message msg = Message.obtain();
@@ -123,8 +157,30 @@ public class MainActivity extends AppCompatActivity {
         return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength);
     }
 
+    private byte[] getBytesFromFile(AssetManager assets, String fileName) throws IOException {
+        InputStream is = assets.open(fileName);
+        int length = is.available();
+        byte[] bytes = new byte[length];
+        // Read in the bytes
+        int offset = 0;
+        int numRead = 0;
+        try {
+            while (offset < bytes.length
+                    && (numRead = is.read(bytes, offset, bytes.length - offset)) >= 0) {
+                offset += numRead;
+            }
+        } finally {
+            is.close();
+        }
+        // Ensure all the bytes have been read in
+        if (offset < bytes.length) {
+            throw new IOException("Could not completely read file " + fileName);
+        }
+        return bytes;
+    }
+
     // convert the input bitmap into a float array
-    public float[][][][] getScaledMatrix(int height, int width, Bitmap bitmap) {
+    public float[][][][] getScaledMatrix(int height, int width, Bitmap bitmap, float[][] norm) {
         float[][][][] inFloat = new float[1][height][width][3];
         int[] pixels = new int[height * width];
         Bitmap bm = Bitmap.createScaledBitmap(bitmap, width, height, true);
@@ -133,9 +189,9 @@ public class MainActivity extends AppCompatActivity {
         for (int i = 0; i < height; ++i) {
             for (int j = 0; j < width; ++j) {
                 final int val = pixels[pixel++];
-                float red = ((val >> 16) & 0xFF);
-                float green = ((val >> 8) & 0xFF);
-                float blue = (val & 0xFF);
+                float red = (((val >> 16) & 0xFF)-norm[0][0])/norm[1][0];
+                float green = (((val >> 8) & 0xFF)-norm[0][1])/norm[1][1];
+                float blue = ((val & 0xFF)-norm[0][2])/norm[1][2];
                 float[] arr = {red, green, blue};
                 inFloat[0][i][j] = arr;
             }
